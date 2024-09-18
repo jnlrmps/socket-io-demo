@@ -17,6 +17,7 @@
   },
   "homepage": "https://github.com/jnlrmps/socket-io-demo#readme",
   "dependencies": {
+    "cors": "^2.8.5",
     "express": "^4.21.0",
     "socket.io": "^4.7.5"
   },
