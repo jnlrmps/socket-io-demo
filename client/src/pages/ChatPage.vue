@@ -4,78 +4,101 @@
       Sample Chat app
     </div>
 
-    <q-tabs>
-      <q-tab>
+    <q-tabs
+      v-model="tab"
+      @update:model-value="joinRoom"
+    >
+      <q-tab name="all">
         All
       </q-tab>
-      <q-tab>
+      <q-tab name="delta">
         Delta
       </q-tab>
-      <q-tab>
+      <q-tab name="zulu">
         Zulu
       </q-tab>
     </q-tabs>
 
-    <q-card>
-      <q-card-section>
-        <q-list>
-          <q-item
-            v-for="(message, index) in messages"
-            :key="index"
-            dense
-          >
-            <q-item-section side>
-              <q-item-label class="text-bold">{{ message.name }}:</q-item-label>
-            </q-item-section>
-            <q-item-section>
-              <q-item-label>{{ message.msg }}</q-item-label>
-            </q-item-section>
-          </q-item>
-        </q-list>
-      </q-card-section>
-      <q-card-section class="row items-end">
-        <q-input v-model="text" class="col q-mr-sm" @keydown.enter="submit" />
-        <q-btn
-          color="primary"
-          label="Send"
-          icon-right="send"
-          @click="submit"
-        />
-      </q-card-section>
-    </q-card>
+    <q-tab-panels
+      v-model="tab"
+    >
+      <q-tab-panel name="all">
+        <ChatMessages :messages="allMessages"  />
+      </q-tab-panel>
+      <q-tab-panel name="delta">
+        <ChatMessages :messages="deltaMessages"  />
+      </q-tab-panel>
+      <q-tab-panel name="zulu">
+        <ChatMessages :messages="zuluMessages"  />
+      </q-tab-panel>
+    </q-tab-panels>
+
+    <div class="row items-center">
+      <q-input v-model="text" class="col q-mr-sm" @keydown.enter="submit" />
+      <q-btn
+        color="primary"
+        label="Send"
+        icon-right="send"
+        @click="submit"
+      />
+    </div>
   </q-page>
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { onMounted, ref, computed } from 'vue'
 import { useQuasar } from 'quasar'
+import { Message } from 'src/components/models'
+import ChatMessages from 'src/components/ChatMessages.vue'
 import { io } from 'socket.io-client'
-
-interface Message {
-  msg: string
-  name: string
-}
 
 const $q = useQuasar()
 const socket = ref()
+const allMessages = ref<Message[]>([])
+const deltaMessages = ref<Message[]>([])
+const zuluMessages = ref<Message[]>([])
 
-const name = ref('Anonymous')
+const tab = ref('all')
+const forAllTab = computed(() => tab.value === 'all')
+
+const user = ref('Anonymous')
 const text = ref('')
-const messages = ref<Message[]>([])
 
 function connect () {
   socket.value = io('http://localhost:3000')
 
-  console.log(socket.value)
-
   socket.value.on('chat_message', (data: Message) => {
-    messages.value.push(data)
+    allMessages.value.push(data)
+  })
+
+  socket.value.on('delta_message', (data: Message) => {
+    deltaMessages.value.push(data)
+  })
+
+  socket.value.on('zulu_message', (data: Message) => {
+    zuluMessages.value.push(data)
   })
 }
 
 function submit () {
-  socket.value.emit('chat_message', { name: name.value, msg: text.value })
+  const payload: Record<string, string> = { user: user.value, msg: text.value }
+  let emitKey = 'chat_message'
+
+  if (!forAllTab.value) {
+    emitKey = 'room_chat_message'
+    payload.room = tab.value
+  }
+
+  socket.value.emit(emitKey, payload)
   text.value = ''
+}
+
+function joinRoom (newTab: string | number) {
+  if (newTab === 'all') {
+    return
+  }
+
+  socket.value.emit('joinRoom', { room: newTab, user: user.value })
 }
 
 onMounted(() => {
@@ -86,10 +109,13 @@ onMounted(() => {
       model: '',
       type: 'text' // optional
     },
-    cancel: true,
+    cancel: false,
     persistent: true
   }).onOk(data => {
-    name.value = data
+    if (data) {
+      user.value = data
+    }
+
     connect()
   })
 })
